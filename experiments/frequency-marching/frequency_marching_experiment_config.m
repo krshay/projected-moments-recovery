@@ -37,9 +37,9 @@ config.real_volumes = struct( ...
 config.synthetic_support = [9,9,6,6,3,3];
 config.error_plot_ceiling = 0.5;
 config.noise_snr_values = logspace(log10(0.5),log10(2),8);
-config.noise_sweep_n_samples = 50000;
+config.noise_sweep_n_samples = 500000;
 config.observation_values = round(logspace(log10(2e4),log10(1e6),9));
-config.observation_sweep_sigma = 0.05;
+config.observation_sweep_snr = 1;
 end
 
 function path = find_volume(repo_root,candidates)

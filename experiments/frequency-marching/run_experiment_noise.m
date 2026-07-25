@@ -57,8 +57,8 @@ upper_error = results.q75_error-results.median_error;
 errorbar(snr_values,results.median_error,lower_error,upper_error,'-o', ...
     'LineWidth',2,'MarkerSize',8);
 set(gca,'XScale','log','YScale','log');
-xlabel('Observation SNR P_{signal}/P_{noise}');
-ylabel('Relative error on marched shells');
+xlabel('SNR');
+ylabel('Relative error');
 ylim([5e-3,config.error_plot_ceiling]);
 grid on;
 apply_publication_style(gcf);

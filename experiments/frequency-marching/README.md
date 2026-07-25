@@ -27,6 +27,9 @@ For a clean projected coefficient array `c` and iid circular complex noise with
 `P_noise = sigma^2`. The expectation over Haar rotations is evaluated
 analytically. The requested SNR, converted `sigma`, noise power, signal power,
 and realized finite-sample power SNR are all saved in the MAT result.
+The observation sweep fixes this same linear SNR through
+`config.observation_sweep_snr` and derives the corresponding `sigma` from the
+synthetic signal power.
 
 The layout follows the two reference repositories: `run.m` reproduces all
 figures, sweep logic lives in `run_experiment_*.m`, random seeds are fixed,
