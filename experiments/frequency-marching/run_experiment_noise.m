@@ -1,28 +1,36 @@
 function results = run_experiment_noise(config)
-%RUN_EXPERIMENT_NOISE Recovery error versus complex-noise standard deviation.
+%RUN_EXPERIMENT_NOISE Recovery error versus linear observation SNR.
 
 S = config.synthetic_support;
 a_true = generate_random_decay_signal(S,config.seed);
-sigma_values = config.noise_sigma_values;
+snr_values = config.noise_snr_values;
+signal_power = projected_signal_power(a_true);
+sigma_values = sqrt(signal_power./snr_values);
 num_trials = config.sampling_num_trials;
-errors = nan(numel(sigma_values),num_trials);
+errors = nan(numel(snr_values),num_trials);
+realized_snr = nan(numel(snr_values),num_trials);
 
 fprintf('\n=== NOISE SWEEP (N = %d) ===\n',config.noise_sweep_n_samples);
-for sigma_idx = 1:numel(sigma_values)
+fprintf('Mean clean projected-coefficient power: %.6g\n',signal_power);
+for snr_idx = 1:numel(snr_values)
     for trial = 1:num_trials
         options = struct('use_analytical_p3',false, ...
             'n_samples',config.noise_sweep_n_samples, ...
-            'noise_sigma',sigma_values(sigma_idx), ...
-            'rng_seed',config.seed+1000*sigma_idx+trial, ...
+            'noise_sigma',sigma_values(snr_idx), ...
+            'rng_seed',config.seed+1000*snr_idx+trial, ...
             'enable_backfill',true,'verbose',false); %#ok<NASGU>
         [~,recovered] = evalc('frequency_marching_recovery(a_true,S,options)');
-        errors(sigma_idx,trial) = recovered.recovered_region_error;
+        errors(snr_idx,trial) = recovered.recovered_region_error;
+        realized_snr(snr_idx,trial) = recovered.realized_observation_snr;
     end
-    fprintf('sigma=%g: mean error %.4e\n',sigma_values(sigma_idx), ...
-        mean(errors(sigma_idx,:)));
+    fprintf('SNR=%g (sigma=%g): mean error %.4e, realized SNR %.4g\n', ...
+        snr_values(snr_idx),sigma_values(snr_idx), ...
+        mean(errors(snr_idx,:)),mean(realized_snr(snr_idx,:)));
 end
 
-results = struct('support',S,'a_true',a_true,'sigma_values',sigma_values, ...
+results = struct('support',S,'a_true',a_true,'snr_values',snr_values, ...
+    'signal_power',signal_power,'sigma_values',sigma_values, ...
+    'realized_snr',realized_snr, ...
     'n_samples',config.noise_sweep_n_samples,'errors',errors, ...
     'num_trials',num_trials, ...
     'mean_error',mean(errors,2),'std_error',std(errors,0,2), ...
@@ -34,14 +42,14 @@ save(fullfile(config.results_dir,'results_noise_sweep.mat'),'results','config','
 figure('Color','w');
 lower_error = results.median_error-results.q25_error;
 upper_error = results.q75_error-results.median_error;
-errorbar(sigma_values,results.median_error,lower_error,upper_error,'-o', ...
+errorbar(snr_values,results.median_error,lower_error,upper_error,'-o', ...
     'LineWidth',2,'MarkerSize',8);
 set(gca,'XScale','log','YScale','log');
-xlabel('Noise standard deviation \sigma');
+xlabel('SNR');
 ylabel('Relative error on marched shells');
 ylim([5e-3,config.error_plot_ceiling]);
 grid on;
 apply_publication_style(gcf);
 exportgraphics(gcf,fullfile(config.figures_dir, ...
-    'frequency_marching_error_vs_noise.pdf'),'ContentType','vector');
+    'frequency_marching_error_vs_snr.pdf'),'ContentType','vector');
 end

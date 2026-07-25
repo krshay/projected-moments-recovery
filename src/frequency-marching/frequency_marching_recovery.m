@@ -105,6 +105,8 @@ end
 
 %% ========== SIMULATE/ESTIMATE PROJECTED 3rd MOMENT ==========
 P3_emp = [];
+clean_observation_energy = 0;
+noise_observation_energy = 0;
 if ~use_analytical_P3_for_solve || verify_analytical
     fprintf('\n=== SIMULATING %d PROJECTION SAMPLES ===\n', N_samples);
     fprintf('  Noise std: %.4f\n', noise_sigma);
@@ -120,6 +122,8 @@ if ~use_analytical_P3_for_solve || verify_analytical
         c = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab);
         noise = (noise_sigma/sqrt(2)) * ...
             (randn(size(c)) + 1i*randn(size(c)));
+        clean_observation_energy = clean_observation_energy + norm(c,'fro')^2;
+        noise_observation_energy = noise_observation_energy + norm(noise,'fro')^2;
         c_samples(:,:,i) = c + noise;
         if verbose && mod(i, max(1, floor(N_samples/10))) == 0
             fprintf('  %d / %d samples\n', i, N_samples);
@@ -279,6 +283,14 @@ result.tail_energy_ratio = tail_ratio;
 result.global_relative_error = global_err;
 result.options = options;
 result.condition_numbers = struct2table(condition_records);
+if noise_observation_energy > 0
+    result.realized_observation_snr = ...
+        clean_observation_energy/noise_observation_energy;
+elseif clean_observation_energy > 0
+    result.realized_observation_snr = Inf;
+else
+    result.realized_observation_snr = NaN;
+end
 if verify_analytical
     result.empirical_moment_relative_error = rel;
 else
