@@ -106,6 +106,7 @@ rng(rng_seed);
 cg_tab   = precompute_cg_table(L_max);
 leg0_tab = precompute_legendre0_table(L_max);   % leg0_tab(l+1, m+shift+1) = P_l^m(0)
 norm_tab = precompute_normalization(L_max);     % norm_tab(l+1, m+shift+1) = N_{l,m}
+projection_mat = precompute_projection_matrix(L_max, leg0_tab, norm_tab, n_coeffs);
 
 %% ========== REPORT GROUND-TRUTH SIGNAL ==========
 fprintf('\n=== GROUND TRUTH ===\n');
@@ -131,7 +132,7 @@ if ~use_analytical_P3_for_solve || verify_analytical
     if ~isempty(clean_sample_cache_key)
         c_clean = get_cached_clean_projected_samples(a_true, L_max, ...
             clean_sample_cache_n_samples, N_samples, clean_sample_cache_key, ...
-            clean_sample_rng_seed, leg0_tab, norm_tab, verbose);
+            clean_sample_rng_seed, projection_mat, verbose);
         clean_observation_energy = sum(abs(c_clean(:)).^2);
         if noise_sigma > 0
             noise = (noise_sigma/sqrt(2)) * ...
@@ -150,7 +151,7 @@ if ~use_analytical_P3_for_solve || verify_analytical
             gamma = 2*pi*rand();
             beta  = acos(2*rand() - 1);
             b = apply_wigner_rotation(a_true, alpha, beta, gamma, L_max);
-            c = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab);
+            c = project_to_2d_fourier(b, projection_mat);
             noise = (noise_sigma/sqrt(2)) * ...
                 (randn(size(c)) + 1i*randn(size(c)));
             clean_observation_energy = clean_observation_energy + norm(c,'fro')^2;
@@ -359,22 +360,23 @@ function norm_tab = precompute_normalization(L_max)
     end
 end
 
-function c = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab)
-    % b: (R x (L_max+1)^2) spherical-harmonic coefficients per shell
-    % c(m+L_max+1, r) = sum_{l>=|m|} N_{l,m} P_l^m(0) b(r, sh_index(l,m))
-    R = size(b, 1);
-    nM = 2*L_max+1;
-    c = zeros(nM, R);
+function projection_mat = precompute_projection_matrix(L_max, leg0_tab, norm_tab, n_coeffs)
     shift = L_max;
+    projection_mat = zeros(2*L_max+1, n_coeffs);
     for m = -L_max:L_max
-        s = zeros(R, 1);
         for l = abs(m):L_max
             w = norm_tab(l+1, m+shift+1) * leg0_tab(l+1, m+shift+1);
-            if w == 0, continue; end
-            s = s + w * b(:, sh_index(l, m));
+            if w ~= 0
+                projection_mat(m+shift+1, sh_index(l, m)) = w;
+            end
         end
-        c(m+L_max+1, :) = s.';
     end
+end
+
+function c = project_to_2d_fourier(b, projection_mat)
+    % b: (R x (L_max+1)^2) spherical-harmonic coefficients per shell
+    % c(m+L_max+1, r) = sum_l N_{l,m} P_l^m(0) b(r, sh_index(l,m)).
+    c = projection_mat * b.';
 end
 
 function rotated_signal = apply_wigner_rotation(signal, alpha, beta, gamma, d)
@@ -392,7 +394,7 @@ function rotated_signal = apply_wigner_rotation(signal, alpha, beta, gamma, d)
 end
 
 function c_samples = get_cached_clean_projected_samples(a_true, L_max, ...
-        cache_n_samples, n_samples, cache_key, rng_seed, leg0_tab, norm_tab, verbose)
+        cache_n_samples, n_samples, cache_key, rng_seed, projection_mat, verbose)
     % Keep exactly one cached sample bank. This gives the sweeps reuse within
     % a trial without retaining every trial's large projected-sample tensor.
     persistent cached
@@ -418,7 +420,7 @@ function c_samples = get_cached_clean_projected_samples(a_true, L_max, ...
             gamma = 2*pi*rand();
             beta  = acos(2*rand() - 1);
             b = apply_wigner_rotation(a_true, alpha, beta, gamma, L_max);
-            clean_bank(:,:,i) = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab);
+            clean_bank(:,:,i) = project_to_2d_fourier(b, projection_mat);
             if verbose && mod(i, max(1, floor(cache_n_samples/10))) == 0
                 fprintf('  clean cache %d / %d samples\n', i, cache_n_samples);
             end
