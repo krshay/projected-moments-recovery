@@ -6,17 +6,21 @@ config.repo_root = repo_root;
 config.seed = 1;
 config.num_trials = 5;
 config.sampling_num_trials = 10;
-config.run_real_volumes = true;
+config.run_real_volumes = false;
 config.run_noise_sweep = true;
-config.run_observation_sweep = true;
+config.run_observation_sweep = false;
 
-config.results_dir = fullfile(repo_root,'results','frequency-marching');
-config.figures_dir = fullfile(repo_root,'figures','frequency-marching');
+config.output_root = fullfile(repo_root,'results','frequency-marching');
+config.run_timestamp = datestr(now,'yyyy-mm-dd_HH-MM-SS');
+config.run_dir = unique_run_dir(fullfile(config.output_root,config.run_timestamp));
+config.results_dir = fullfile(config.run_dir,'results');
+config.figures_dir = fullfile(config.run_dir,'figures');
+config.config_snapshot_dir = fullfile(config.run_dir,'config');
 config.processed_dir = fullfile(repo_root,'data','processed','frequency-marching');
 config.volume_results_dir = fullfile(config.results_dir,'mrc');
 
 config.volume_options = struct( ...
-    'L_max',9, ...
+    'L_max',5, ...
     'grid_size',31, ...
     'rho_max',pi, ...
     'basis_mode','kc');
@@ -32,8 +36,8 @@ config.real_volumes = struct( ...
 % Sampling sweeps use ell_max=5 to keep finite-sample runs tractable.
 config.synthetic_support = [9,9,6,6,3,3];
 config.error_plot_ceiling = 0.5;
-config.noise_sigma_values = logspace(log10(5e-3),log10(1.2e-1),8);
-config.noise_sweep_n_samples = 200000;
+config.noise_sigma_values = logspace(log10(0.05),log10(0.1),8);
+config.noise_sweep_n_samples = 50000;
 config.observation_values = round(logspace(log10(2e4),log10(1e6),9));
 config.observation_sweep_sigma = 0.05;
 end
@@ -46,5 +50,14 @@ for idx = 1:numel(candidates)
         path = candidate;
         return;
     end
+end
+end
+
+function run_dir = unique_run_dir(base_run_dir)
+run_dir = base_run_dir;
+suffix = 2;
+while exist(run_dir,'dir') == 7
+    run_dir = sprintf('%s_%02d',base_run_dir,suffix);
+    suffix = suffix+1;
 end
 end

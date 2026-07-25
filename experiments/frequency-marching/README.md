@@ -38,11 +38,13 @@ run('experiments/frequency-marching/run.m')
 ```
 
 Edit `frequency_marching_experiment_config.m` to change paper-scale parameters
-or disable individual experiment groups. Generated coefficient caches go to
-`data/processed/frequency-marching/`, numeric results to
-`results/frequency-marching/`, and figures to `figures/frequency-marching/`.
-MRC maps are written to `results/frequency-marching/mrc/`; the combined table
-is `results/frequency-marching/condition_numbers_real_volumes.csv`.
+or disable individual experiment groups. Each execution creates a timestamped
+run folder under `results/frequency-marching/`, for example
+`results/frequency-marching/2026-07-25_14-30-00/`. Numeric outputs go to that
+run folder's `results/` subdirectory, PDF figures to `figures/`, and MRC maps
+to `results/mrc/`. The run folder also contains `config/` with `config.mat`,
+`config.txt`, and copies of the MATLAB experiment files used for that run.
+Generated coefficient caches go to `data/processed/frequency-marching/`.
 
 The recovery code uses base MATLAB only. `exportgraphics` requires MATLAB
 R2020a or newer.
