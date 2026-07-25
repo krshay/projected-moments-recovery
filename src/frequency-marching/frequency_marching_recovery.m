@@ -22,6 +22,10 @@ function result = frequency_marching_recovery(a_true, S_assumed, options)
 %     clean_sample_cache_n_samples
 %                       number of noiseless samples to cache; the first
 %                       n_samples are used by this call (default n_samples)
+%     estimate_required_p3_only
+%                       true to estimate only P3 entries used by the solver;
+%                       default false because the full vectorized estimator
+%                       is faster for the paper sweep sizes
 %     enable_backfill    recover inner shells after the march (default true)
 %     verify_analytical  compare empirical and population P3 (default false)
 %     verbose            print progress (default true)
@@ -70,6 +74,7 @@ clean_sample_cache_key = get_option(options, 'clean_sample_cache_key', '');
 clean_sample_rng_seed = get_option(options, 'clean_sample_rng_seed', rng_seed);
 clean_sample_cache_n_samples = get_option(options, ...
     'clean_sample_cache_n_samples', N_samples);
+estimate_required_p3_only = get_option(options, 'estimate_required_p3_only', false);
 verify_analytical = get_option(options, 'verify_analytical', false);
 use_analytical_P3_for_solve = get_option(options, 'use_analytical_p3', true);
 enable_backfill = get_option(options, 'enable_backfill', true);
@@ -166,12 +171,12 @@ if ~use_analytical_P3_for_solve || verify_analytical
 
     fprintf('\n=== ESTIMATING P_3 ===\n');
     tic;
-    if verify_analytical
-        P3_emp = estimate_P3(c_samples, L_max);
-    else
+    if ~verify_analytical && estimate_required_p3_only
         p3_entry_mask = build_solver_P3_entry_mask(L_max, S_vec, R_max, enable_backfill);
         P3_emp = estimate_P3(c_samples, L_max, p3_entry_mask);
         fprintf('  Estimated %d solver-required P_3 entries\n', nnz(p3_entry_mask));
+    else
+        P3_emp = estimate_P3(c_samples, L_max);
     end
     fprintf('  Empirical P_3 estimation time: %.2f s\n', toc);
 end

@@ -12,7 +12,7 @@ marching under the decay-by-3 condition.
 2. Zero outer coefficients to enforce `S(l)-S(l+2) >= 3`, then repeat the
    noiseless recovery.
 3. For one normalized random signal with exact decay-by-3, plot recovery error
-   against the linear observation SNR (power ratio, not decibels).
+   against the linear observation power SNR `P_signal/P_noise` (not decibels).
 4. For the same signal, plot recovery error against the number of observations.
 
 The finite-sample curves focus on the regime where relative errors remain below
@@ -21,10 +21,12 @@ paper figures. Full-support and global errors remain in the MAT results, and the
 MRC maps contain the complete current estimate.
 
 For a clean projected coefficient array `c` and iid circular complex noise with
-`E|noise(m,r)|^2 = sigma^2`, the noise sweep uses
-`SNR = E_R[||c(R)||_F^2] / ((2*L_max+1)*R_max*sigma^2)`. The expectation over
-Haar rotations is evaluated analytically. The requested SNR, converted `sigma`,
-and realized finite-sample SNR are all saved in the MAT result.
+`E|noise(m,r)|^2 = sigma^2`, the noise sweep uses the linear power ratio
+`SNR = P_signal/P_noise`, where
+`P_signal = E_R[||c(R)||_F^2]/((2*L_max+1)*R_max)` and
+`P_noise = sigma^2`. The expectation over Haar rotations is evaluated
+analytically. The requested SNR, converted `sigma`, noise power, signal power,
+and realized finite-sample power SNR are all saved in the MAT result.
 
 The layout follows the two reference repositories: `run.m` reproduces all
 figures, sweep logic lives in `run_experiment_*.m`, random seeds are fixed,

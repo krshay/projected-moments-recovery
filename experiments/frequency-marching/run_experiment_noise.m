@@ -6,12 +6,14 @@ a_true = generate_random_decay_signal(S,config.seed);
 snr_values = config.noise_snr_values;
 signal_power = projected_signal_power(a_true);
 sigma_values = sqrt(signal_power./snr_values);
+noise_power_values = sigma_values.^2;
 num_trials = config.sampling_num_trials;
 errors = nan(numel(snr_values),num_trials);
 realized_snr = nan(numel(snr_values),num_trials);
 
 fprintf('\n=== NOISE SWEEP (N = %d) ===\n',config.noise_sweep_n_samples);
-fprintf('Mean clean projected-coefficient power: %.6g\n',signal_power);
+fprintf('Mean clean projected-coefficient signal power P_signal: %.6g\n',signal_power);
+fprintf('Linear observation SNR is P_signal/P_noise = P_signal/sigma^2 (not dB).\n');
 for trial = 1:num_trials
     cache_key = sprintf('noise_sweep_trial_%d',trial);
     clean_seed = config.seed+trial;
@@ -31,13 +33,15 @@ for trial = 1:num_trials
     fprintf('Trial %d / %d complete\n',trial,num_trials);
 end
 for snr_idx = 1:numel(snr_values)
-    fprintf('SNR=%g (sigma=%g): mean error %.4e, realized SNR %.4g\n', ...
-        snr_values(snr_idx),sigma_values(snr_idx), ...
+    fprintf(['SNR=P_signal/P_noise=%g (P_noise=sigma^2=%g, ', ...
+        'sigma=%g): mean error %.4e, realized power SNR %.4g\n'], ...
+        snr_values(snr_idx),noise_power_values(snr_idx),sigma_values(snr_idx), ...
         mean(errors(snr_idx,:)),mean(realized_snr(snr_idx,:)));
 end
 
 results = struct('support',S,'a_true',a_true,'snr_values',snr_values, ...
-    'signal_power',signal_power,'sigma_values',sigma_values, ...
+    'signal_power',signal_power,'noise_power_values',noise_power_values, ...
+    'sigma_values',sigma_values, ...
     'realized_snr',realized_snr, ...
     'n_samples',config.noise_sweep_n_samples,'errors',errors, ...
     'num_trials',num_trials, ...
@@ -53,7 +57,7 @@ upper_error = results.q75_error-results.median_error;
 errorbar(snr_values,results.median_error,lower_error,upper_error,'-o', ...
     'LineWidth',2,'MarkerSize',8);
 set(gca,'XScale','log','YScale','log');
-xlabel('SNR');
+xlabel('Observation SNR P_{signal}/P_{noise}');
 ylabel('Relative error on marched shells');
 ylim([5e-3,config.error_plot_ceiling]);
 grid on;
