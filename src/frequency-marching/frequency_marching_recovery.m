@@ -336,18 +336,14 @@ end
 
 function rotated_signal = apply_wigner_rotation(signal, alpha, beta, gamma, d)
     % Taken from linsolv_rotation.m convention: signal is (num_shells x n_coeffs).
-    [num_shells, n_coeffs] = size(signal);
+    [~, n_coeffs] = size(signal);
     rotated_signal = zeros(size(signal));
     for l = 0:d
         m_values = -l:l;
         indices = arrayfun(@(m) sh_index(l,m), m_values);
         if max(indices) <= n_coeffs
             D_matrix = wigner_d_matrix(l, alpha, beta, gamma);
-            for shell = 1:num_shells
-                old_coeffs = signal(shell, indices);
-                new_coeffs = D_matrix * old_coeffs.';
-                rotated_signal(shell, indices) = new_coeffs.';
-            end
+            rotated_signal(:, indices) = signal(:, indices) * D_matrix.';
         end
     end
 end
@@ -355,32 +351,72 @@ end
 function D = wigner_d_matrix(l, alpha, beta, gamma)
     m_values = -l:l;
     n = 2*l + 1;
-    D = zeros(n, n);
+    small_D = zeros(n, n);
     for i = 1:n
         for j = 1:n
             m  = m_values(i);
             mp = m_values(j);
-            d_beta = wigner_small_d(l, m, mp, beta);
-            D(i, j) = exp(-1i*alpha*m) * d_beta * exp(-1i*gamma*mp);
+            small_D(i, j) = wigner_small_d(l, m, mp, beta);
         end
     end
+    alpha_phase = exp(-1i*alpha*m_values(:));
+    gamma_phase = exp(-1i*gamma*m_values);
+    D = alpha_phase .* small_D .* gamma_phase;
 end
 
 function d = wigner_small_d(l, m, mp, beta)
     if abs(m) > l || abs(mp) > l, d = 0; return; end
+    terms = cached_wigner_small_d_terms(l, m, mp);
+    if isempty(terms.coeff)
+        d = 0;
+        return;
+    end
+    cb = cos(beta/2);
+    sb = sin(beta/2);
+    d = sum(terms.coeff .* (cb.^terms.cos_power) .* (sb.^terms.sin_power));
+end
+
+function terms = cached_wigner_small_d_terms(l, m, mp)
+    persistent term_cache
+    if isempty(term_cache)
+        term_cache = {};
+    end
+    if numel(term_cache) < l+1
+        term_cache{l+1} = [];
+    end
+    band_cache = term_cache{l+1};
+    if isempty(band_cache)
+        band_cache = cell(2*l+1, 2*l+1);
+    end
+    row = m + l + 1;
+    col = mp + l + 1;
+    terms = band_cache{row, col};
+    if ~isempty(terms)
+        return;
+    end
+
     k_min = max([0, m - mp]);
     k_max = min([l + m, l - mp]);
-    sum_term = 0;
+    prefactor = sqrt(factorial(l+m) * factorial(l-m) * factorial(l+mp) * factorial(l-mp));
+    coeff = zeros(1, max(0, k_max-k_min+1));
+    cos_power = zeros(size(coeff));
+    sin_power = zeros(size(coeff));
+    term_idx = 0;
     for k = k_min:k_max
         if l+m-k >= 0 && l-mp-k >= 0 && k+mp-m >= 0 && k >= 0
-            coeff = (-1)^(k+mp-m) / ( factorial(l+m-k) * factorial(l-mp-k) * ...
-                                      factorial(k+mp-m) * factorial(k) );
-            sum_term = sum_term + coeff * (cos(beta/2))^(2*l+m-mp-2*k) * ...
-                                          (sin(beta/2))^(2*k+mp-m);
+            term_idx = term_idx + 1;
+            coeff(term_idx) = prefactor * (-1)^(k+mp-m) / ...
+                ( factorial(l+m-k) * factorial(l-mp-k) * ...
+                  factorial(k+mp-m) * factorial(k) );
+            cos_power(term_idx) = 2*l + m - mp - 2*k;
+            sin_power(term_idx) = 2*k + mp - m;
         end
     end
-    prefactor = sqrt(factorial(l+m) * factorial(l-m) * factorial(l+mp) * factorial(l-mp));
-    d = prefactor * sum_term;
+    terms = struct('coeff',coeff(1:term_idx), ...
+        'cos_power',cos_power(1:term_idx), ...
+        'sin_power',sin_power(1:term_idx));
+    band_cache{row, col} = terms;
+    term_cache{l+1} = band_cache;
 end
 
 function s = get_S(l, S_vec, L_max)
