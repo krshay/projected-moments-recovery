@@ -9,16 +9,25 @@ errors = nan(numel(N_values),num_trials);
 
 fprintf('\n=== OBSERVATION SWEEP (sigma = %g) ===\n', ...
     config.observation_sweep_sigma);
-for N_idx = 1:numel(N_values)
-    for trial = 1:num_trials
+max_N = max(N_values);
+for trial = 1:num_trials
+    cache_key = sprintf('observation_sweep_trial_%d',trial);
+    clean_seed = config.seed+trial;
+    for N_idx = 1:numel(N_values)
         options = struct('use_analytical_p3',false, ...
             'n_samples',N_values(N_idx), ...
             'noise_sigma',config.observation_sweep_sigma, ...
             'rng_seed',config.seed+1000*N_idx+trial, ...
+            'clean_sample_cache_key',cache_key, ...
+            'clean_sample_rng_seed',clean_seed, ...
+            'clean_sample_cache_n_samples',max_N, ...
             'enable_backfill',true,'verbose',false); %#ok<NASGU>
         [~,recovered] = evalc('frequency_marching_recovery(a_true,S,options)');
         errors(N_idx,trial) = recovered.recovered_region_error;
     end
+    fprintf('Trial %d / %d complete\n',trial,num_trials);
+end
+for N_idx = 1:numel(N_values)
     fprintf('N=%d: mean error %.4e\n',N_values(N_idx),mean(errors(N_idx,:)));
 end
 

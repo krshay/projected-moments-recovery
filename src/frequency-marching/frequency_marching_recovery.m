@@ -13,6 +13,15 @@ function result = frequency_marching_recovery(a_true, S_assumed, options)
 %     n_samples          observations for an empirical moment (default 1e3)
 %     noise_sigma        circular complex noise standard deviation (default 0)
 %     rng_seed           simulation seed (default 42)
+%     clean_sample_cache_key
+%                       nonempty key for reusing noiseless projected samples
+%                       across repeated empirical calls (default '')
+%     clean_sample_rng_seed
+%                       seed for cached noiseless sample generation
+%                       (default rng_seed)
+%     clean_sample_cache_n_samples
+%                       number of noiseless samples to cache; the first
+%                       n_samples are used by this call (default n_samples)
 %     enable_backfill    recover inner shells after the march (default true)
 %     verify_analytical  compare empirical and population P3 (default false)
 %     verbose            print progress (default true)
@@ -57,6 +66,10 @@ L_max = length(S_assumed) - 1;
 N_samples = get_option(options, 'n_samples', 1000);
 noise_sigma = get_option(options, 'noise_sigma', 0);
 rng_seed = get_option(options, 'rng_seed', 42);
+clean_sample_cache_key = get_option(options, 'clean_sample_cache_key', '');
+clean_sample_rng_seed = get_option(options, 'clean_sample_rng_seed', rng_seed);
+clean_sample_cache_n_samples = get_option(options, ...
+    'clean_sample_cache_n_samples', N_samples);
 verify_analytical = get_option(options, 'verify_analytical', false);
 use_analytical_P3_for_solve = get_option(options, 'use_analytical_p3', true);
 enable_backfill = get_option(options, 'enable_backfill', true);
@@ -74,6 +87,9 @@ assert(max(S_assumed) <= size(a_true, 1), ...
     'S_assumed cannot exceed the number of rows in A_TRUE');
 assert(N_samples >= 1 && N_samples == floor(N_samples), ...
     'n_samples must be a positive integer');
+assert(clean_sample_cache_n_samples >= N_samples && ...
+    clean_sample_cache_n_samples == floor(clean_sample_cache_n_samples), ...
+    'clean_sample_cache_n_samples must be an integer at least n_samples');
 assert(noise_sigma >= 0, 'noise_sigma must be nonnegative');
 gaps2 = S_assumed(1:end-2) - S_assumed(3:end);  % S(l) - S(l+2) of the ASSUMED profile
 if any(gaps2 < 3) || any(S_assumed(max(1,end-1):end) < 3)
@@ -110,23 +126,38 @@ noise_observation_energy = 0;
 if ~use_analytical_P3_for_solve || verify_analytical
     fprintf('\n=== SIMULATING %d PROJECTION SAMPLES ===\n', N_samples);
     fprintf('  Noise std: %.4f\n', noise_sigma);
-    % c_samples(m+L_max+1, r, i) = c_m^{(i)}[r]
-    c_samples = zeros(2*L_max+1, R_max, N_samples);
     tic;
-    for i = 1:N_samples
-        % Haar SO(3): alpha,gamma uniform; cos(beta) uniform on [-1,1].
-        alpha = 2*pi*rand();
-        gamma = 2*pi*rand();
-        beta  = acos(2*rand() - 1);
-        b = apply_wigner_rotation(a_true, alpha, beta, gamma, L_max);
-        c = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab);
-        noise = (noise_sigma/sqrt(2)) * ...
-            (randn(size(c)) + 1i*randn(size(c)));
-        clean_observation_energy = clean_observation_energy + norm(c,'fro')^2;
-        noise_observation_energy = noise_observation_energy + norm(noise,'fro')^2;
-        c_samples(:,:,i) = c + noise;
-        if verbose && mod(i, max(1, floor(N_samples/10))) == 0
-            fprintf('  %d / %d samples\n', i, N_samples);
+    if ~isempty(clean_sample_cache_key)
+        c_clean = get_cached_clean_projected_samples(a_true, L_max, ...
+            clean_sample_cache_n_samples, N_samples, clean_sample_cache_key, ...
+            clean_sample_rng_seed, leg0_tab, norm_tab, verbose);
+        clean_observation_energy = sum(abs(c_clean(:)).^2);
+        if noise_sigma > 0
+            noise = (noise_sigma/sqrt(2)) * ...
+                (randn(size(c_clean)) + 1i*randn(size(c_clean)));
+            noise_observation_energy = sum(abs(noise(:)).^2);
+            c_samples = c_clean + noise;
+        else
+            c_samples = c_clean;
+        end
+    else
+        % c_samples(m+L_max+1, r, i) = c_m^{(i)}[r]
+        c_samples = zeros(2*L_max+1, R_max, N_samples);
+        for i = 1:N_samples
+            % Haar SO(3): alpha,gamma uniform; cos(beta) uniform on [-1,1].
+            alpha = 2*pi*rand();
+            gamma = 2*pi*rand();
+            beta  = acos(2*rand() - 1);
+            b = apply_wigner_rotation(a_true, alpha, beta, gamma, L_max);
+            c = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab);
+            noise = (noise_sigma/sqrt(2)) * ...
+                (randn(size(c)) + 1i*randn(size(c)));
+            clean_observation_energy = clean_observation_energy + norm(c,'fro')^2;
+            noise_observation_energy = noise_observation_energy + norm(noise,'fro')^2;
+            c_samples(:,:,i) = c + noise;
+            if verbose && mod(i, max(1, floor(N_samples/10))) == 0
+                fprintf('  %d / %d samples\n', i, N_samples);
+            end
         end
     end
     fprintf('  Sampling time: %.2f s\n', toc);
@@ -346,6 +377,45 @@ function rotated_signal = apply_wigner_rotation(signal, alpha, beta, gamma, d)
             rotated_signal(:, indices) = signal(:, indices) * D_matrix.';
         end
     end
+end
+
+function c_samples = get_cached_clean_projected_samples(a_true, L_max, ...
+        cache_n_samples, n_samples, cache_key, rng_seed, leg0_tab, norm_tab, verbose)
+    % Keep exactly one cached sample bank. This gives the sweeps reuse within
+    % a trial without retaining every trial's large projected-sample tensor.
+    persistent cached
+    R_max = size(a_true, 1);
+    nM = 2*L_max + 1;
+    key = char(cache_key);
+    cache_valid = ~isempty(cached) && strcmp(cached.key, key) && ...
+        cached.L_max == L_max && cached.R_max == R_max && ...
+        cached.n_samples >= cache_n_samples && ...
+        cached.signal_norm == norm(a_true(:));
+
+    if ~cache_valid
+        if verbose
+            fprintf('  Building clean sample cache "%s" with %d samples\n', ...
+                key, cache_n_samples);
+        end
+        rng_state = rng();
+        cleanup = onCleanup(@() rng(rng_state));
+        rng(rng_seed);
+        clean_bank = zeros(nM, R_max, cache_n_samples);
+        for i = 1:cache_n_samples
+            alpha = 2*pi*rand();
+            gamma = 2*pi*rand();
+            beta  = acos(2*rand() - 1);
+            b = apply_wigner_rotation(a_true, alpha, beta, gamma, L_max);
+            clean_bank(:,:,i) = project_to_2d_fourier(b, L_max, leg0_tab, norm_tab);
+            if verbose && mod(i, max(1, floor(cache_n_samples/10))) == 0
+                fprintf('  clean cache %d / %d samples\n', i, cache_n_samples);
+            end
+        end
+        cached = struct('key',key,'L_max',L_max,'R_max',R_max, ...
+            'n_samples',cache_n_samples,'signal_norm',norm(a_true(:)), ...
+            'samples',clean_bank);
+    end
+    c_samples = cached.samples(:,:,1:n_samples);
 end
 
 function D = wigner_d_matrix(l, alpha, beta, gamma)
