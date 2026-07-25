@@ -123,6 +123,7 @@ end
 P3_emp = [];
 clean_observation_energy = 0;
 noise_observation_energy = 0;
+p3_entry_mask = [];
 if ~use_analytical_P3_for_solve || verify_analytical
     fprintf('\n=== SIMULATING %d PROJECTION SAMPLES ===\n', N_samples);
     fprintf('  Noise std: %.4f\n', noise_sigma);
@@ -164,7 +165,13 @@ if ~use_analytical_P3_for_solve || verify_analytical
 
     fprintf('\n=== ESTIMATING P_3 ===\n');
     tic;
-    P3_emp = estimate_P3(c_samples, L_max);
+    if verify_analytical
+        P3_emp = estimate_P3(c_samples, L_max);
+    else
+        p3_entry_mask = build_solver_P3_entry_mask(L_max, S_vec, R_max, enable_backfill);
+        P3_emp = estimate_P3(c_samples, L_max, p3_entry_mask);
+        fprintf('  Estimated %d solver-required P_3 entries\n', nnz(p3_entry_mask));
+    end
     fprintf('  Empirical P_3 estimation time: %.2f s\n', toc);
 end
 
@@ -314,6 +321,11 @@ result.tail_energy_ratio = tail_ratio;
 result.global_relative_error = global_err;
 result.options = options;
 result.condition_numbers = struct2table(condition_records);
+if isempty(p3_entry_mask)
+    result.num_empirical_p3_entries_estimated = NaN;
+else
+    result.num_empirical_p3_entries_estimated = nnz(p3_entry_mask);
+end
 if noise_observation_energy > 0
     result.realized_observation_snr = ...
         clean_observation_energy/noise_observation_energy;
@@ -610,10 +622,13 @@ function [A, b] = build_highest_weight_system(a_est, l_target, r3, ...
     end
 end
 
-function P3 = estimate_P3(c_samples, L_max)
+function P3 = estimate_P3(c_samples, L_max, entry_mask)
     % P3(r1, r2, r3, m1_idx, m2_idx, m3_idx) =
     %   (1/N) sum_i c_samples(m1_idx, r1, i) * c_samples(m2_idx, r2, i) * c_samples(m3_idx, r3, i)
     % Only entries with m1 + m2 + m3 == 0 are computed; the rest remain 0.
+    if nargin < 3
+        entry_mask = [];
+    end
     [nM, R, N] = size(c_samples);
     assert(nM == 2*L_max+1);
     P3 = zeros(R, R, R, nM, nM, nM);
@@ -624,12 +639,88 @@ function P3 = estimate_P3(c_samples, L_max)
             x = reshape(c_samples(m1+L_max+1, :, :), R, N);   % R x N
             y = reshape(c_samples(m2+L_max+1, :, :), R, N);
             z = reshape(c_samples(m3+L_max+1, :, :), R, N);
+            if ~isempty(entry_mask)
+                needed = entry_mask(:, :, :, m1+L_max+1, m2+L_max+1, m3+L_max+1);
+                if ~any(needed(:)), continue; end
+                for r3 = 1:R
+                    entries = find(needed(:, :, r3));
+                    if isempty(entries), continue; end
+                    [r1_idx, r2_idx] = ind2sub([R, R], entries);
+                    values = sum(x(r1_idx, :) .* y(r2_idx, :) .* z(r3, :), 2) / N;
+                    for entry_idx = 1:numel(entries)
+                        P3(r1_idx(entry_idx), r2_idx(entry_idx), r3, ...
+                            m1+L_max+1, m2+L_max+1, m3+L_max+1) = values(entry_idx);
+                    end
+                end
+                continue;
+            end
             T = zeros(R, R, R);
             for r3 = 1:R
                 xz = x .* z(r3, :);                 % R x N
                 T(:, :, r3) = (xz * y.') / N;       % R x R
             end
             P3(:, :, :, m1+L_max+1, m2+L_max+1, m3+L_max+1) = T;
+        end
+    end
+end
+
+function entry_mask = build_solver_P3_entry_mask(L_max, S_vec, R_max, enable_backfill)
+    nM = 2*L_max + 1;
+    shift = L_max;
+    entry_mask = false(R_max, R_max, R_max, nM, nM, nM);
+
+    for l_target = 2:L_max
+        m3 = l_target;
+        r3_lo = get_S(l_target+2, S_vec, L_max) + 1;
+        r3_hi = get_S(l_target, S_vec, L_max);
+        if r3_lo > r3_hi, continue; end
+
+        for m1 = -(l_target-1):-1
+            m2 = -l_target - m1;
+            if m2 >= 0 || m2 < -(l_target-1), continue; end
+            l1 = abs(m1);
+            l2 = abs(m2);
+            r1_min = get_S(l1+2, S_vec, L_max) + 1;
+            r1_max = get_S(l1, S_vec, L_max);
+            r2_min = get_S(l2+2, S_vec, L_max) + 1;
+            r2_max = get_S(l2, S_vec, L_max);
+            if r1_min > r1_max || r2_min > r2_max, continue; end
+            entry_mask(r1_min:r1_max, r2_min:r2_max, r3_lo:r3_hi, ...
+                m1+shift+1, m2+shift+1, m3+shift+1) = true;
+        end
+    end
+
+    if ~enable_backfill
+        return;
+    end
+
+    recovered = false(L_max+1, R_max);
+    for l = 0:min(1, L_max)
+        recovered(l+1, 1:S_vec(l+1)) = true;
+    end
+    for l = 2:L_max
+        r_lo = get_S(l+2, S_vec, L_max) + 1;
+        r_hi = get_S(l, S_vec, L_max);
+        if r_lo <= r_hi
+            recovered(l+1, r_lo:r_hi) = true;
+        end
+    end
+
+    for l_target = (L_max-1):-1:2
+        m3 = l_target;
+        r3_values = find(~recovered(l_target+1, 1:S_vec(l_target+1)));
+        for m1 = -L_max:L_max
+            m2 = -m3 - m1;
+            if abs(m2) > L_max, continue; end
+            l1 = abs(m1);
+            l2 = abs(m2);
+            r1_min = get_S(l1+2, S_vec, L_max) + 1;
+            r1_max = get_S(l1, S_vec, L_max);
+            r2_min = get_S(l2+2, S_vec, L_max) + 1;
+            r2_max = get_S(l2, S_vec, L_max);
+            if r1_min > r1_max || r2_min > r2_max, continue; end
+            entry_mask(r1_min:r1_max, r2_min:r2_max, r3_values, ...
+                m1+shift+1, m2+shift+1, m3+shift+1) = true;
         end
     end
 end
