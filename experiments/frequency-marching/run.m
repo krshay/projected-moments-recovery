@@ -37,7 +37,8 @@ fprintf('Results: %s\n',config.results_dir);
 fprintf('Figures: %s\n',config.figures_dir);
 
 function ensure_output_directories(config)
-directories = {config.results_dir,config.figures_dir,config.processed_dir};
+directories = {config.results_dir,config.figures_dir,config.processed_dir, ...
+    config.volume_results_dir};
 for idx = 1:numel(directories)
     if exist(directories{idx},'dir') ~= 7
         mkdir(directories{idx});

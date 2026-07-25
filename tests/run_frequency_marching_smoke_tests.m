@@ -16,6 +16,8 @@ result = frequency_marching_recovery(a_true,S,struct( ...
 assert(result.global_relative_error < 1e-6, ...
     'Noiseless recovery error %.3e exceeds tolerance.', ...
     result.global_relative_error);
+assert(height(result.condition_numbers) == 6);
+assert(all(result.condition_numbers.reality_constrained_condition > 0));
 
 % Exercise the empirical-moment/noise path without asserting statistical
 % accuracy at this deliberately tiny sample count.
@@ -35,11 +37,25 @@ synthetic_volume = exp(-8*(x.^2+0.8*y.^2+1.2*z.^2));
 temporary_mat = [tempname,'.mat'];
 save(temporary_mat,'synthetic_volume');
 cleanup = onCleanup(@() delete(temporary_mat));
-[a_volume,volume_shells] = expand_real_volume_fourier_bessel( ...
+[a_volume,volume_shells,volume_metadata] = expand_real_volume_fourier_bessel( ...
     temporary_mat,struct('L_max',2,'grid_size',15, ...
     'basis_mode','manual','manual_shells',[2,2,2]));
 assert(isequal(volume_shells,[2,2,2]));
 assert(all(isfinite(a_volume(:))));
+reconstructed_volume = reconstruct_fourier_bessel_volume(a_volume,volume_metadata);
+assert(isequal(size(reconstructed_volume),[15,15,15]));
+assert(isreal(reconstructed_volume) && all(isfinite(reconstructed_volume(:))));
+
+temporary_mrc = [tempname,'.mrc'];
+mrc_cleanup = onCleanup(@() delete(temporary_mrc));
+write_mrc_volume(temporary_mrc,reconstructed_volume);
+fid = fopen(temporary_mrc,'r','l');
+file_cleanup = onCleanup(@() fclose(fid));
+dimensions = fread(fid,3,'int32').';
+mode = fread(fid,1,'int32');
+fseek(fid,208,'bof');
+magic = char(fread(fid,4,'uint8=>uint8').');
+assert(isequal(dimensions,[15,15,15]) && mode == 2 && strcmp(magic,'MAP '));
 for l = 0:2
     for m = 1:l
         plus_idx = l^2+m+l+1;

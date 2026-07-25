@@ -15,9 +15,18 @@ marching under the decay-by-3 condition.
    against complex-noise standard deviation `sigma`.
 4. For the same signal, plot recovery error against the number of observations.
 
+The finite-sample curves focus on the regime where relative errors remain below
+`0.5`; larger errors are treated as outside the useful numerical range for the
+paper figures. Full-support and global errors remain in the MAT results, and the
+MRC maps contain the complete current estimate.
+
 The layout follows the two reference repositories: `run.m` reproduces all
 figures, sweep logic lives in `run_experiment_*.m`, random seeds are fixed,
 numeric outputs are saved as MAT files, and figures are exported as vector PDF.
+The real-volume experiment also writes mode-2 MRC maps for the coefficient
+truth and reconstruction in both the unmodified and decay-enforced cases, and
+exports a CSV table containing the condition number of every marching and
+backfill system.
 
 ## Running
 
@@ -32,11 +41,17 @@ Edit `frequency_marching_experiment_config.m` to change paper-scale parameters
 or disable individual experiment groups. Generated coefficient caches go to
 `data/processed/frequency-marching/`, numeric results to
 `results/frequency-marching/`, and figures to `figures/frequency-marching/`.
+MRC maps are written to `results/frequency-marching/mrc/`; the combined table
+is `results/frequency-marching/condition_numbers_real_volumes.csv`.
 
 The recovery code uses base MATLAB only. `exportgraphics` requires MATLAB
 R2020a or newer.
 
-The default real-volume demonstration uses `L_max = 5` and the canonical
-support `[9 9 6 6 3 3]`. The driver asserts both sides of the experiment:
+The real-volume experiments use `L_max = 9` and canonical support
+`[15 15 12 12 9 9 6 6 3 3]`. The finite-sample noise and observation sweeps
+use `L_max = 5` with support `[9 9 6 6 3 3]`, ten trials, and larger
+observation counts than the initial exploratory run. The curves plot medians
+with interquartile error bars. The driver asserts both
+sides of the noiseless molecular experiment:
 unmodified error must exceed `1e-2`, and the decay-enforced noiseless error
 must be below `1e-8`.

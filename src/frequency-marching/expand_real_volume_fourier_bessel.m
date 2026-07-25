@@ -87,8 +87,10 @@ metadata.L_max = L_max;
 metadata.rho_max = rho_max;
 metadata.basis_mode = basis_mode;
 metadata.available_shells = available_shells;
+metadata.bessel_zeros = bessel_zeros;
 metadata.native_reality_convention = native_convention;
 metadata.native_reality_defect = reality_defect;
+metadata.reference_volume = vol;
 end
 
 function a_out = project_volume(vol, shell_band, shell_within, ...

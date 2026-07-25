@@ -5,6 +5,7 @@ config = struct();
 config.repo_root = repo_root;
 config.seed = 1;
 config.num_trials = 5;
+config.sampling_num_trials = 10;
 config.run_real_volumes = true;
 config.run_noise_sweep = true;
 config.run_observation_sweep = true;
@@ -12,9 +13,10 @@ config.run_observation_sweep = true;
 config.results_dir = fullfile(repo_root,'results','frequency-marching');
 config.figures_dir = fullfile(repo_root,'figures','frequency-marching');
 config.processed_dir = fullfile(repo_root,'data','processed','frequency-marching');
+config.volume_results_dir = fullfile(config.results_dir,'mrc');
 
 config.volume_options = struct( ...
-    'L_max',5, ...
+    'L_max',9, ...
     'grid_size',31, ...
     'rho_max',pi, ...
     'basis_mode','kc');
@@ -27,12 +29,13 @@ config.real_volumes = struct( ...
     'path',{find_volume(repo_root,{'TRPV1.mat','vol_TRPV1_true.mrc'}), ...
             find_volume(repo_root,{'emd_2660.mat','vol_80S_true.mrc'})});
 
-% Paired profile [9 9 6 6 3 3], satisfying S(l)-S(l+2)=3.
+% Sampling sweeps use ell_max=5 to keep finite-sample runs tractable.
 config.synthetic_support = [9,9,6,6,3,3];
-config.noise_sigma_values = logspace(-3,0,8);
-config.noise_sweep_n_samples = 10000;
-config.observation_values = round(logspace(3,5,8));
-config.observation_sweep_sigma = 0.1;
+config.error_plot_ceiling = 0.5;
+config.noise_sigma_values = logspace(log10(5e-3),log10(1.2e-1),8);
+config.noise_sweep_n_samples = 200000;
+config.observation_values = round(logspace(log10(2e4),log10(1e6),9));
+config.observation_sweep_sigma = 0.05;
 end
 
 function path = find_volume(repo_root,candidates)

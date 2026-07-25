@@ -3,7 +3,6 @@
 # Generated numerical artifacts
 data/processed/frequency-marching/*.mat
 results/frequency-marching/*.mat
-figures/frequency-marching/*.pdf
 
 # Raw molecular maps (README remains tracked)
 data/raw/*.mat

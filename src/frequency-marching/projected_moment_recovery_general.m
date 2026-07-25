@@ -64,7 +64,7 @@ use_analytical_P3_for_solve = true;    % true = feed the analytical P_3 (infinit
                                         %   rule out prefactor bugs in the march.
 enable_backfill = true;                 % true = after the highest-weight march, run a
                                         %   descending-band backfill pass that recovers A_l[r]
-                                        %   at inner shells r <= S(l+1) using P_3 equations
+                                        %   at inner shells r <= S(l+2) using P_3 equations
                                         %   with m_3 = l, leveraging the already-recovered
                                         %   higher bands at those shells. Recovers the full
                                         %   signal (not just the outer-shell triangle).
@@ -241,7 +241,7 @@ fprintf('\n================= RESULTS =================\n');
 if enable_backfill
     fprintf('Full recovery pass: highest-weight march + inner-shell backfill.\n\n');
 else
-    fprintf('Theorem 3.3 validation: recover A_l at "new" shells r in (S(l+1), S(l)].\n');
+    fprintf('Theorem 3.3 validation: recover A_l at "new" shells r in (S(l+2), S(l)].\n');
     fprintf('Shells OUTSIDE those ranges are not touched by this march and remain zero\n');
     fprintf('in a_est -- that is expected, not a bug.\n\n');
 end
@@ -444,7 +444,7 @@ end
 
 function err = band_error_recovered(a_est, a_true, l, S_vec, L_max)
     % Relative Frobenius error at band l over ONLY the shells the march
-    % actually solves for: r in (S(l+1), S(l)] for l >= 2, or all shells
+    % actually solves for: r in (S(l+2), S(l)] for l >= 2, or all shells
     % 1..S(l) for l <= 1 (treated as fixed).
     idx = arrayfun(@(m) sh_index(l, m), -l:l);
     if l <= 1
@@ -676,8 +676,9 @@ function cg_tab = precompute_cg_table(d)
 end
 
 function a_est = backfill_inner_shells(a_est, L_max, S_vec, cg_tab, leg0_tab, norm_tab, P3)
-    % After the highest-weight march recovers A_l at r in (S(l+1), S(l)] for each
-    % band l >= 2, this backfill pass fills in A_l at the inner shells r <= S(l+1)
+    % After the parity-aware highest-weight march recovers A_l at
+    % r in (S(l+2), S(l)] for each band l >= 2, this backfill pass fills in
+    % A_l at the inner shells r <= S(l+2)
     % for l = L_max-1 down to 2. (Band L_max is already fully recovered by the
     % main march since S(L_max+1) = 0; bands 0, 1 are fixed.)
     %
@@ -687,22 +688,12 @@ function a_est = backfill_inner_shells(a_est, L_max, S_vec, cg_tab, leg0_tab, no
     % march or earlier backfill steps), those terms become known constants that move
     % to the RHS. The remaining unknowns are {a_{l_target, k3}[r_3] : k3 = -l..l}.
     %
-    % r_1 and r_2 are drawn from "fully-known" shells (shells where all active bands
-    % are recovered), so no other unknowns appear in the equation.
+    % r_1 and r_2 are drawn from the recovered outer annuli of the partner
+    % bands |m_1| and |m_2|. The support decay and the parity zero of P_l^m(0)
+    % isolate the minimal contributing band at those partner shells, so the
+    % whole radial shell need not be fully known.
 
     R_max = size(a_est, 1);
-    shift = L_max;
-
-    % active_max(r) = highest band active at shell r
-    active_max = zeros(R_max, 1);
-    for r = 1:R_max
-        for l = L_max:-1:0
-            if S_vec(l+1) >= r
-                active_max(r) = l;
-                break;
-            end
-        end
-    end
 
     % recovered(l+1, r) = true iff A_l[r] is known
     recovered = false(L_max+1, R_max);
@@ -718,16 +709,7 @@ function a_est = backfill_inner_shells(a_est, L_max, S_vec, cg_tab, leg0_tab, no
     end
 
     for l_target = (L_max-1) : -1 : 2
-        % Compute fully-known shells at this moment
-        is_full = true(R_max, 1);
-        for r = 1:R_max
-            for lp = 0:active_max(r)
-                if ~recovered(lp+1, r), is_full(r) = false; break; end
-            end
-        end
-        full_shells = find(is_full).';
         fprintf('  --- Backfill band l = %d ---\n', l_target);
-        fprintf('    fully-known shells: [%s]\n', num2str(full_shells));
 
         % Find unrecovered shells for this band
         shells_to_fill = [];
@@ -738,14 +720,10 @@ function a_est = backfill_inner_shells(a_est, L_max, S_vec, cg_tab, leg0_tab, no
         if isempty(shells_to_fill)
             fprintf('    No shells to backfill.\n'); continue;
         end
-        if isempty(full_shells)
-            fprintf('    No fully-known shells available to build equations.\n');
-            continue;
-        end
 
         for r3 = shells_to_fill
-            [A, b] = build_backfill_system(a_est, l_target, r3, full_shells, ...
-                L_max, cg_tab, leg0_tab, norm_tab, P3);
+            [A, b] = build_backfill_system(a_est, l_target, r3, ...
+                L_max, S_vec, cg_tab, leg0_tab, norm_tab, P3);
             if isempty(A)
                 fprintf('    r3=%d: no equations.\n', r3); continue;
             end
@@ -767,11 +745,12 @@ function a_est = backfill_inner_shells(a_est, L_max, S_vec, cg_tab, leg0_tab, no
     end
 end
 
-function [A, b] = build_backfill_system(a_est, l_target, r3, full_shells, ...
-        L_max, cg_tab, leg0_tab, norm_tab, P3)
+function [A, b] = build_backfill_system(a_est, l_target, r3, ...
+        L_max, S_vec, cg_tab, leg0_tab, norm_tab, P3)
     % Build the linear system for a_{l_target, k_3}[r_3] (k_3 = -l..l) using
-    % P_3(r_1, m_1, r_2, m_2, r_3, m_3 = l_target) equations with r_1, r_2 drawn
-    % from full_shells (shells where every active band is already recovered).
+    % P_3(r_1, m_1, r_2, m_2, r_3, m_3 = l_target) equations. For each partner
+    % projected mode m_i, set l_i = |m_i| and draw r_i from the outer annulus
+    % S(l_i+2) < r_i <= S(l_i), which isolates the already recovered band l_i.
     %
     % In the outer (l_1, l_2, l_3) sum of P_3, l_3 >= l_target (because |m_3| = l).
     % For l_3 = l_target, a_{l_3, k_3}[r_3] is UNKNOWN -> becomes a coefficient on
@@ -789,16 +768,22 @@ function [A, b] = build_backfill_system(a_est, l_target, r3, full_shells, ...
         m2 = -m3 - m1;
         if abs(m2) > L_max, continue; end
 
-        for r1 = full_shells
-            for r2 = full_shells
+        l1 = abs(m1);
+        l2 = abs(m2);
+        r1_min = get_S(l1+2, S_vec, L_max) + 1;
+        r1_max = get_S(l1,   S_vec, L_max);
+        r2_min = get_S(l2+2, S_vec, L_max) + 1;
+        r2_max = get_S(l2,   S_vec, L_max);
+        if r1_min > r1_max || r2_min > r2_max, continue; end
+
+        for r1 = r1_min:r1_max
+            for r2 = r2_min:r2_max
                 row = zeros(1, n_unknowns);
                 rhs_known = 0;
 
-                for l1 = abs(m1):L_max
-                  for l2 = abs(m2):L_max
-                    l3_min = max([abs(l1-l2), l_target]);
-                    l3_max = min(l1+l2, L_max);
-                    for l3 = l3_min:l3_max
+                l3_min = max([abs(l1-l2), l_target]);
+                l3_max = min(l1+l2, L_max);
+                for l3 = l3_min:l3_max
                         cg_outer = cg_tab(l1+1, m1+shift+1, l2+1, m2+shift+1, l3+1);
                         if abs(cg_outer) < 1e-14, continue; end
 
@@ -845,8 +830,6 @@ function [A, b] = build_backfill_system(a_est, l_target, r3, full_shells, ...
                             end
                             rhs_known = rhs_known + outer * inner;
                         end
-                    end
-                  end
                 end
 
                 if norm(row) < 1e-14, continue; end
