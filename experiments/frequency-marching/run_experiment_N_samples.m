@@ -58,7 +58,14 @@ errorbar(N_values,results.median_error,lower_error,upper_error,'-o', ...
 set(gca,'XScale','log','YScale','log');
 xlabel('Number of observations');
 ylabel('Relative error');
-ylim([5e-3,config.error_plot_ceiling]);
+log_x_limits = log10([min(N_values),max(N_values)]);
+log_x_padding = 0.02*diff(log_x_limits);
+xlim(10.^[log_x_limits(1)-log_x_padding, ...
+    log_x_limits(2)+log_x_padding]);
+log_y_limits = log10([min(results.q25_error),max(results.q75_error)]);
+log_y_padding = 0.05*diff(log_y_limits);
+ylim(10.^[log_y_limits(1)-log_y_padding, ...
+    log_y_limits(2)+log_y_padding]);
 grid on;
 apply_publication_style(gcf);
 exportgraphics(gcf,fullfile(config.figures_dir, ...
