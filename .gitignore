@@ -1,5 +1,9 @@
 .DS_Store
 
+# Local manuscript draft
+docs/*
+!docs/.gitkeep
+
 # Generated numerical artifacts
 data/processed/frequency-marching/*.mat
 results/frequency-marching/*.mat
