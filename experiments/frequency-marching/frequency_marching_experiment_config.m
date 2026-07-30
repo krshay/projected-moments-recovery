@@ -8,7 +8,7 @@ config.num_trials = 5;
 config.sampling_num_trials = 10;
 config.run_real_volumes = false;
 config.run_noise_sweep = true;
-config.run_observation_sweep = false;
+config.run_observation_sweep = true;
 
 config.output_root = fullfile(repo_root,'results','frequency-marching');
 config.run_timestamp = datestr(now,'yyyy-mm-dd_HH-MM-SS');
@@ -36,9 +36,9 @@ config.real_volumes = struct( ...
 % Sampling sweeps use ell_max=5 to keep finite-sample runs tractable.
 config.synthetic_support = [9,9,6,6,3,3];
 config.error_plot_ceiling = 0.5;
-config.noise_snr_values = logspace(log10(0.5),log10(2),8);
-config.noise_sweep_n_samples = 500000;
-config.observation_values = round(logspace(log10(2e4),log10(1e6),9));
+config.noise_snr_values = logspace(log10(0.1),log10(5),15);
+config.noise_sweep_n_samples = 750000;
+config.observation_values = round(logspace(log10(2e4),log10(500000),9));
 config.observation_sweep_snr = 1;
 end
 

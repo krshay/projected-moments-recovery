@@ -63,8 +63,8 @@ R2020a or newer.
 The real-volume experiments use `L_max = 9` and canonical support
 `[15 15 12 12 9 9 6 6 3 3]`. The finite-sample noise and observation sweeps
 use `L_max = 5` with support `[9 9 6 6 3 3]`, ten trials, and larger
-observation counts than the initial exploratory run. The curves plot medians
-with interquartile error bars. The driver asserts both
+observation counts than the initial exploratory run. The curves plot the mean
+over the independent trials, without error bars. The driver asserts both
 sides of the noiseless molecular experiment:
 unmodified error must exceed `1e-2`, and the decay-enforced noiseless error
 must be below `1e-8`.

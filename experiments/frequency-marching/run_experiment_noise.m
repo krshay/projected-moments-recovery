@@ -4,7 +4,7 @@ function results = run_experiment_noise(config)
 S = config.synthetic_support;
 a_true = generate_random_decay_signal(S,config.seed);
 snr_values = config.noise_snr_values;
-signal_power = projected_signal_power(a_true);
+signal_power = projected_signal_power(a_true,S);
 sigma_values = sqrt(signal_power./snr_values);
 noise_power_values = sigma_values.^2;
 num_trials = config.sampling_num_trials;
@@ -45,17 +45,11 @@ results = struct('support',S,'a_true',a_true,'snr_values',snr_values, ...
     'realized_snr',realized_snr, ...
     'n_samples',config.noise_sweep_n_samples,'errors',errors, ...
     'num_trials',num_trials, ...
-    'mean_error',mean(errors,2),'std_error',std(errors,0,2), ...
-    'median_error',median(errors,2), ...
-    'q25_error',row_quantile(errors,0.25), ...
-    'q75_error',row_quantile(errors,0.75));
+    'mean_error',mean(errors,2),'std_error',std(errors,0,2));
 save(fullfile(config.results_dir,'results_noise_sweep.mat'),'results','config','-v7.3');
 
 figure('Color','w');
-lower_error = results.median_error-results.q25_error;
-upper_error = results.q75_error-results.median_error;
-errorbar(snr_values,results.median_error,lower_error,upper_error,'-o', ...
-    'LineWidth',2,'MarkerSize',8);
+plot(snr_values,results.mean_error,'-o','LineWidth',2,'MarkerSize',8);
 set(gca,'XScale','log','YScale','log');
 xlabel('SNR');
 ylabel('Relative error');
@@ -63,7 +57,7 @@ log_x_limits = log10([min(snr_values),max(snr_values)]);
 log_x_padding = 0.02*diff(log_x_limits);
 xlim(10.^[log_x_limits(1)-log_x_padding, ...
     log_x_limits(2)+log_x_padding]);
-log_y_limits = log10([min(results.q25_error),max(results.q75_error)]);
+log_y_limits = log10([min(results.mean_error),max(results.mean_error)]);
 log_y_padding = 0.05*diff(log_y_limits);
 ylim(10.^[log_y_limits(1)-log_y_padding, ...
     log_y_limits(2)+log_y_padding]);

@@ -1,20 +1,18 @@
-function signal_power = projected_signal_power(a)
+function signal_power = projected_signal_power(a, S)
 %PROJECTED_SIGNAL_POWER Mean clean coefficient power under Haar rotations.
-%   SIGNAL_POWER = PROJECTED_SIGNAL_POWER(A) returns
+%   SIGNAL_POWER = PROJECTED_SIGNAL_POWER(A,S) returns
 %
-%       E_R[||c(R)||_F^2] / ((2*L_MAX+1)*R_MAX),
+%       E_R[||c(R)||_F^2] / SUM_l ((2*l+1)*S(l+1)),
 %
-%   where c(R) contains the projected angular-Fourier coefficients of the
-%   rotated spherical-harmonic coefficient array A. This is the signal
-%   power per entry to compare with circular complex noise variance
-%   sigma^2 when defining the linear observation SNR.
+%   using the number of coefficients in the degree-dependent expansion.
 
 n_coeffs = size(a,2);
 L_max = round(sqrt(n_coeffs)-1);
 assert((L_max+1)^2 == n_coeffs, ...
     'A must have (L_max+1)^2 spherical-harmonic columns.');
 
-R_max = size(a,1);
+assert(numel(S) == L_max+1, 'S must contain one shell count per degree.');
+assert(all(S >= 0) && all(S <= size(a,1)), 'Invalid shell counts in S.');
 total_power = 0;
 for l = 0:L_max
     band_idx = (l^2+1):(l+1)^2;
@@ -25,7 +23,8 @@ for l = 0:L_max
     end
 end
 
-signal_power = total_power/((2*L_max+1)*R_max);
+num_active = sum((2*(0:L_max)+1).*S(:).');
+signal_power = total_power/num_active;
 end
 
 function weight = spherical_harmonic_equator_weight(l,m)
