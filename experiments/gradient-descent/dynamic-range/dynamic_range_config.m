@@ -44,6 +44,11 @@ config.restart_count = 20;
 % tensor, so cost grows as the cube: 16 costs 2.4x of 12, while 31 costs
 % 17x for cond 5.38 instead of 5.35 -- no conditioning benefit.
 config.radial_count = 16;
+
+% NDFT shell count for real volumes. The shell samples are the coefficients
+% (identity radial basis), so this is the only radial knob on the real path;
+% config.radial_count applies to the synthetic Fourier-Bessel path only.
+config.shell_count = 12;
 config.success_threshold = 1e-4;
 
 % Truth-scaled per-band Gaussian starts. Required for a dynamic-range sweep:

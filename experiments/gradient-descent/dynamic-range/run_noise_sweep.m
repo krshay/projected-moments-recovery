@@ -57,6 +57,7 @@ experiment_dir = fileparts(mfilename('fullpath'));
 repo_root = fileparts(fileparts(fileparts(experiment_dir)));
 addpath(fullfile(repo_root,'src','gradient-descent'));
 addpath(fullfile(repo_root,'src','frequency-marching'));
+addpath(fullfile(repo_root,'src','nonuniform'));
 
 if nargin < 1 || isempty(experiment)
     experiment = 'synthetic';
@@ -73,7 +74,6 @@ end
 
 L_max = 5;
 shell_count = 12;
-radial_count = 16;
 restart_count = 20;
 seed = 42;
 shell_ratio = 1000;          % fixed for the 'shell' experiment
@@ -100,7 +100,7 @@ fprintf(' Uniform SO(3) rotations; iid complex Gaussian noise on c_m[k]\n');
 fprintf('============================================================\n');
 
 [coefficients,support,radial_basis,label] = build_signal(experiment, ...
-    repo_root,L_max,shell_count,radial_count,shell_ratio,volume_file);
+    repo_root,L_max,shell_count,shell_ratio,volume_file);
 fprintf('\n  signal: %s\n',label);
 report_structure(coefficients,L_max,support);
 
@@ -138,7 +138,7 @@ end
 
 %% ==================== signal construction ====================
 function [coefficients,support,radial_basis,label] = build_signal( ...
-    experiment,repo_root,L_max,shell_count,radial_count,shell_ratio,volume_file)
+    experiment,repo_root,L_max,shell_count,shell_ratio,volume_file)
 support = shell_count*ones(1,L_max+1);
 switch lower(experiment)
     case 'synthetic'
@@ -158,25 +158,33 @@ switch lower(experiment)
         label = sprintf('synthetic, shell profile S=%g, band norms equal', ...
             shell_ratio);
     case 'real'
-        volume_options = struct('L_max',L_max,'grid_size',31,'rho_max',pi, ...
-            'basis_mode','manual','manual_shells',support);
-        [raw,~,metadata] = expand_real_volume_fourier_bessel( ...
-            fullfile(repo_root,'data','raw',volume_file),volume_options);
-        native_basis = gd_fourier_bessel_radial_basis(metadata,radial_count);
-        % No band-norm equalization. gd_impose_band_dynamic_range(...,1) was
-        % applied here previously; on a real molecule that is band-to-band
-        % whitening, not a normalization -- it destroys the native band
-        % dynamic range, which is one of the properties under study. The
-        % objective is scale invariant (P3 is cubic, the loss divides by
-        % ||P3_observed||^2) and sigma is set from the projection RMS, so
-        % leaving the raw scale alone changes nothing except that the
-        % coefficients are now the molecule's own.
-        % Delta coordinates: optimize the sampled profile u = Phi*A directly.
-        coefficients = gd_apply_radial_basis(raw,native_basis,support,L_max);
-        support = radial_count*ones(1,L_max+1);
-        radial_basis = repmat({eye(radial_count)},1,L_max+1);
-        label = sprintf('%s, delta coordinates, K=%d, native band norms', ...
-            volume_file,radial_count);
+        % NDFT-exact shell projection. This REPLACED the Fourier-Bessel
+        % least-squares expansion (expand_real_volume_fourier_bessel), which
+        % is not a well-defined function of the volume: it fits all (l,s,m)
+        % jointly through normal equations at cond(B) ~ 3e9 and truncates 25
+        % of 432 directions at a 1e-8 cutoff, so it returns one arbitrary
+        % member of a solution set. Changing the FB shell count with the
+        % volume held fixed moved the resulting array by 1.36 relative; the
+        % NDFT array reproduces to 4.1e-17 under radial refinement, because
+        % each shell is an independent quadrature projection with no solve.
+        %
+        % The radial basis is the identity: the shell samples ARE the
+        % coefficients, so there is no Phi layer and no radial_count.
+        coefficients = nu_expand_volume_shells( ...
+            fullfile(repo_root,'data','raw',volume_file), ...
+            struct('L_max',L_max,'grid_size',31,'rho_max',pi, ...
+                   'shell_count',shell_count,'mode','exact'));
+        % NATIVE band norms. gd_impose_band_dynamic_range(...,1) is band-to-
+        % band spectral whitening, and it is not moment-accessible: the
+        % projection mixes l inside each m block, so the whitened moment
+        % cannot be formed from the native moment without already knowing
+        % the answer. Only the overall scale is fixed, which the cubic
+        % moment leaves free anyway.
+        coefficients = coefficients/max(norm(coefficients(:)),eps);
+        support = shell_count*ones(1,L_max+1);
+        radial_basis = repmat({eye(shell_count)},1,L_max+1);
+        label = sprintf('%s, NDFT shells, K=%d, native band norms', ...
+            volume_file,shell_count);
     otherwise
         error(['Unknown experiment "%s". Use synthetic, real or shell.'], ...
             experiment);

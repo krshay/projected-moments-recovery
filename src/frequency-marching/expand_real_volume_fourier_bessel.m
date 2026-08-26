@@ -4,6 +4,29 @@ function [a, available_shells, metadata] = ...
 %   This follows the complex spherical-harmonic and Fourier--Bessel
 %   conventions used by gd_recovery_real_volume_standalone.m. The returned
 %   array has standard reality a_{l,-m}=(-1)^m conj(a_{l,m}).
+%
+%   WARNING -- NOT A WELL-DEFINED FUNCTION OF THE VOLUME.
+%   PROJECT_VOLUME below fits all (l,s,m) coefficients jointly by least
+%   squares through the normal equations B'*B, then inverts with a truncated
+%   pseudo-inverse at a 1e-8 relative eigenvalue cutoff. For TRPV1 at
+%   L_max = 5 with 12 shells that is 432 columns at cond(B) ~ 3e9 and
+%   cond(B'*B) ~ 9e18, of which only 407 survive the cutoff. The returned
+%   array is therefore the minimum-norm member of a 25-dimensional affine
+%   family of equally good fits, and which member you get depends on the
+%   fitting parameters rather than on the molecule: changing the shell count
+%   from 12 to 14 with the volume held FIXED moves the resulting delta-shell
+%   array by 1.36 relative (i.e. the two are essentially unrelated).
+%
+%   Do not use this for new work on real volumes. Use
+%   NU_EXPAND_VOLUME_SHELLS (src/nonuniform) instead, which extracts each
+%   shell by an independent spherical-quadrature projection with no solve,
+%   and reproduces to 4.1e-17 under radial refinement. See
+%   tests/run_ndft_expansion_tests.m, which measures both.
+%
+%   This function is retained because the frequency-marching code genuinely
+%   needs coefficients in the Fourier--Bessel basis, which the shell
+%   expansion does not produce. Whether the instability above affects those
+%   results has not been investigated.
 
 if nargin < 2
     options = struct();

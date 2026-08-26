@@ -14,6 +14,7 @@ gradient_experiment_dir = fileparts(experiment_dir);
 repo_root = fileparts(fileparts(gradient_experiment_dir));
 addpath(fullfile(repo_root,'src','gradient-descent'));
 addpath(fullfile(repo_root,'src','frequency-marching'));
+addpath(fullfile(repo_root,'src','nonuniform'));
 addpath(experiment_dir);
 
 config = dynamic_range_config(repo_root);
@@ -63,14 +64,27 @@ else
     assert(exist(config.volume.path,'file') == 2, ...
         'Missing volume: %s',config.volume.path);
     fprintf('\nExpanding %s ...\n',config.volume.name);
-    [coefficients_raw,support,metadata] = expand_real_volume_fourier_bessel( ...
-        config.volume.path,config.volume_options);
-    [radial_basis,rho_grid] = gd_fourier_bessel_radial_basis( ...
-        metadata,config.radial_count);
-    metadata.gradient_descent_rho_grid = rho_grid;
+    % NDFT-exact shell projection, replacing the Fourier-Bessel least-squares
+    % expansion. The FB path solves for all (l,s,m) jointly through normal
+    % equations and truncates 25 of 432 directions, so it returns an
+    % arbitrary member of a solution set that moves by 1.36 relative when the
+    % shell count changes with the volume fixed. Each NDFT shell is an
+    % independent quadrature projection, so the array is a well-defined
+    % function of the volume (4.1e-17 under radial refinement).
+    shell_count = config.shell_count;
+    [coefficients_raw,support,metadata] = nu_expand_volume_shells( ...
+        config.volume.path,struct('L_max',L_max, ...
+            'grid_size',config.volume_options.grid_size, ...
+            'rho_max',config.volume_options.rho_max, ...
+            'shell_count',shell_count,'mode','exact'));
+    % The shell samples ARE the coefficients: the radial basis is the identity
+    % and there is no Phi layer, so 'fourier-bessel' coordinates no longer
+    % exist for a real volume and the sweep runs in delta coordinates only.
+    radial_basis = repmat({eye(shell_count)},1,L_max+1);
+    metadata.gradient_descent_rho_grid = metadata.rho_grid;
     fprintf('  expansion time: %.2fs\n',toc(build_timer));
-    fprintf('  native reality convention: %s (defect %.3e)\n', ...
-        metadata.native_reality_convention,metadata.native_reality_defect);
+    fprintf('  standard reality defect: %.3e (NDFT, %s)\n', ...
+        metadata.standard_reality_defect,metadata.sampling_mode);
 end
 support_native = support;
 radial_basis_native = radial_basis;
@@ -78,11 +92,14 @@ modes = config.radial_basis_modes;
 if ~iscell(modes)
     modes = {modes};
 end
-if strcmpi(config.source,'synthetic')
-    % The synthetic problem is already defined on the identity radial basis;
-    % there is no Phi layer to bypass.
-    modes = {'delta'};
+% Neither source has a Phi layer any more: the synthetic problem is defined
+% on the identity radial basis, and the NDFT expansion returns shell samples
+% directly. 'fourier-bessel' coordinates are therefore not available.
+if any(strcmpi(modes,'fourier-bessel'))
+    warning(['fourier-bessel coordinates are not available: the NDFT ', ...
+        'expansion has no Phi layer. Running delta coordinates.']);
 end
+modes = {'delta'};
 report_basis_conditioning(radial_basis_native,L_max);
 
 results = cell(numel(config.ratios)*numel(modes),1);
