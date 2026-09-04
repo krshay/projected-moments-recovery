@@ -1,4 +1,4 @@
-function summary = run_noise_sweep(experiment,snrs,sample_count)
+function summary = run_noise_sweep(experiment,snrs,sample_count,volume)
 %RUN_NOISE_SWEEP SNR sweep for the three gradient-descent experiments.
 %   RUN_NOISE_SWEEP(EXPERIMENT) runs one of
 %     'synthetic'  Gaussian coefficients, identity radial basis
@@ -10,8 +10,10 @@ function summary = run_noise_sweep(experiment,snrs,sample_count)
 %   Gaussian noise added to c_m[k], rather than taken from the exact
 %   population formula.
 %
-%   RUN_NOISE_SWEEP(EXPERIMENT,SNRS,N) overrides the SNR grid and the sample
-%   count. SNR is a plain power ratio, not decibels:
+%   RUN_NOISE_SWEEP(EXPERIMENT,SNRS,N,VOLUME) overrides the SNR grid, the
+%   sample count, and (for EXPERIMENT = 'real') which volume file in
+%   data/raw is expanded. VOLUME defaults to 'vol_TRPV1_true.mrc'; pass
+%   'vol_80S_true.mrc' for 80S. SNR is a plain power ratio, not decibels:
 %       SNR = mean|c_m[k]|^2 / sigma^2,
 %   so SNR = 1 means equal signal and noise power and Inf means noiseless.
 %   The grid is sorted descending, so the sweep always runs clean to noisy.
@@ -81,13 +83,22 @@ max_iterations = 3000;
 optimizer = struct('method','auto','max_iterations',max_iterations, ...
     'optimality_tolerance',1e-10,'step_tolerance',1e-14, ...
     'function_tolerance',1e-16,'display','off');
-volume_file = 'vol_TRPV1_true.mrc';
+if nargin < 4 || isempty(volume)
+    volume_file = 'vol_TRPV1_true.mrc';
+else
+    volume_file = volume;
+end
 
 output_dir = fullfile(repo_root,'results','gradient-descent','noise-sweep');
 if exist(output_dir,'dir') ~= 7
     mkdir(output_dir);
 end
-diary(fullfile(output_dir,sprintf('noise_sweep_%s.log',experiment)));
+if strcmpi(experiment,'real')
+    tag = sprintf('%s_%s',experiment,regexprep(volume_file,'\.[^.]*$',''));
+else
+    tag = experiment;
+end
+diary(fullfile(output_dir,sprintf('noise_sweep_%s.log',tag)));
 diary_cleanup = onCleanup(@() diary('off'));
 total_timer = tic;
 
@@ -129,7 +140,7 @@ write_summary(records,output_dir,experiment,restart_count,sample_count);
 summary = struct('experiment',experiment,'snrs',snrs,'sigmas',sigmas, ...
     'records',{records},'sample_count',sample_count, ...
     'projection_rms',projection_rms,'runtime_seconds',toc(total_timer));
-save(fullfile(output_dir,sprintf('noise_sweep_%s.mat',experiment)), ...
+save(fullfile(output_dir,sprintf('noise_sweep_%s.mat',tag)), ...
     'summary','-v7.3');
 fprintf('\nFinished in %.1f s (%.1f min). Written to %s\n', ...
     summary.runtime_seconds,summary.runtime_seconds/60,output_dir);

@@ -1,13 +1,20 @@
-function summary = run_fb_basis_recovery(volume,snr,sample_count,n_basis,n_samples_radial)
+function summary = run_fb_basis_recovery(volume,snr,sample_count,n_basis,n_samples_radial,crop)
 %RUN_FB_BASIS_RECOVERY Recovery in the Fourier-Bessel basis from a sample moment.
 %   RUN_FB_BASIS_RECOVERY() runs 80S at SNR = 1 with the defaults below.
-%   RUN_FB_BASIS_RECOVERY(VOLUME,SNR,N,S,K) overrides them.
+%   RUN_FB_BASIS_RECOVERY(VOLUME,SNR,N,S,K,CROP) overrides them.
 %
 %     VOLUME  file in data/raw            (default 'vol_80S_true.mrc')
 %     SNR     power ratio mean|c|^2/sigma^2, Inf for the exact moment  (1)
 %     N       projections per moment estimate                          (1e5)
 %     S       Fourier-Bessel functions per band -- THE UNKNOWNS         (12)
 %     K       radial sample points -- DISCRETIZATION ONLY               (16)
+%     CROP    margin crop passed to NU_LOAD_VOLUME, 1 for none           (1)
+%
+%   CROP discards the outer margin of the deposited map before masking and
+%   resizing, so the grid is spent on the molecule rather than on solvent; see
+%   NU_LOAD_VOLUME. It defaults to 1, which leaves every existing result in
+%   this file bit-identical. Runs at different CROP are not comparable: the
+%   crop changes the coefficient array, hence the recovery problem itself.
 %
 %   THE MODEL. u_l(rho) is taken to lie in the span of S Fourier-Bessel radial
 %   functions, u_l = sum_s A_{l,s} j_l(k_{l,s} rho/rho_max). The A are the
@@ -39,6 +46,7 @@ if nargin < 2 || isempty(snr),              snr = 1;       end
 if nargin < 3 || isempty(sample_count),     sample_count = 100000; end
 if nargin < 4 || isempty(n_basis),          n_basis = 12;  end
 if nargin < 5 || isempty(n_samples_radial), n_samples_radial = 16; end
+if nargin < 6 || isempty(crop),             crop = 1;      end
 S = n_basis; K = n_samples_radial;
 assert(K > S, ['K (%d) must exceed S (%d): at K = S the Fourier-Bessel ', ...
     'design matrix is square and near-singular and the recovery will not ', ...
@@ -55,7 +63,8 @@ model = gd_precompute_model(L_max);
 
 output_dir = fullfile(repo_root,'results','gradient-descent','fb-basis');
 if exist(output_dir,'dir') ~= 7, mkdir(output_dir); end
-tag = sprintf('%s_S%d_K%d_snr%g',regexprep(volume,'\.[^.]*$',''),S,K,snr);
+tag = sprintf('%s_S%d_K%d_crop%g_snr%g', ...
+    regexprep(volume,'\.[^.]*$',''),S,K,crop,snr);
 diary(fullfile(output_dir,sprintf('fb_basis_%s.log',tag)));
 diary_cleanup = onCleanup(@() diary('off'));
 timer_all = tic;
@@ -63,7 +72,7 @@ timer_all = tic;
 % ---- the molecule, sampled on K spheres (well-posed NDFT expansion) ----
 u = nu_expand_volume_shells(fullfile(repo_root,'data','raw',volume), ...
     struct('L_max',L_max,'grid_size',31,'rho_max',pi, ...
-           'shell_count',K,'mode','exact'));
+           'shell_count',K,'mode','exact','crop',crop));
 u = u/max(norm(u(:)),eps);                       % native band norms
 
 % ---- Fourier-Bessel basis: S functions on the SAME K radii ----
@@ -87,7 +96,7 @@ u_model = gd_apply_radial_basis(A_true,Phi,support,L_max);
 model_error = norm(u_model-u,'fro')/norm(u,'fro');
 
 fprintf('\n============================================================\n');
-fprintf(' Fourier-Bessel recovery: %s\n',volume);
+fprintf(' Fourier-Bessel recovery: %s, crop = %g\n',volume,crop);
 fprintf(' S = %d basis functions (unknowns), K = %d radial samples\n',S,K);
 fprintf(' SNR = %g, N = %d, %d restarts, %d iterations, seed %d\n', ...
     snr,sample_count,restart_count,max_iterations,seed);
@@ -158,7 +167,7 @@ fprintf('  (total error against the molecule combines the profile error\n');
 fprintf('   with the %.4e modelling error, in quadrature -- they are\n',model_error);
 fprintf('   orthogonal, the second being the least-squares residual)\n');
 
-summary = struct('volume',volume,'snr',snr,'S',S,'K',K, ...
+summary = struct('volume',volume,'snr',snr,'crop',crop,'S',S,'K',K, ...
     'sample_count',sample_count,'cond_phi',condition, ...
     'model_error',model_error,'errors',errors, ...
     'profile_error',profile_error,'capped',capped, ...

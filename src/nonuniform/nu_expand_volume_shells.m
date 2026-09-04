@@ -29,9 +29,10 @@ shell_count = get_option(options,'shell_count',12);
 n_theta = get_option(options,'n_theta',max(2*L_max+8,24));
 n_phi = get_option(options,'n_phi',max(4*L_max+8,48));
 mode = get_option(options,'mode','exact');
+crop = get_option(options,'crop',1);
 
 assert(exist(volume_path,'file') == 2,'Volume not found: %s',volume_path);
-volume = nu_load_volume(volume_path,grid_size);
+volume = nu_load_volume(volume_path,grid_size,crop);
 
 if mod(grid_size,2) == 0
     k_range = (-grid_size/2:grid_size/2-1)';
@@ -77,6 +78,7 @@ metadata = struct('volume_path',volume_path,'grid_size',grid_size, ...
     'shell_count',shell_count,'rho_grid',rho_grid, ...
     'n_theta',n_theta,'n_phi',n_phi,'sampling_mode',mode, ...
     'available_shells',available_shells,'standard_reality_defect',defect, ...
+    'crop',crop, ...
     'reference_volume',volume);
 end
 
