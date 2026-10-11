@@ -5,6 +5,7 @@ docs/*
 !docs/.gitkeep
 
 # Generated numerical artifacts
+data/processed/*.mat
 data/processed/frequency-marching/*.mat
 results/
 

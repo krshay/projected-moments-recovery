@@ -39,11 +39,20 @@ for block_index = 1:numel(observed_moment)
 end
 assert(moment_scale > eps,'Observed projected third moment is numerically zero.');
 
+% Bands pinned to truth. Default [0,1] is the historical convention. Pinning is
+% a prefix 0:(k-1): [] optimises every band, [0] pins only the rotation-
+% invariant band. Note that pinning l = 1 breaks the SO(3) gauge of the moment
+% by fixing one representative of an orbit of exact solutions, which can leave
+% spurious minima near the other representatives.
+fixed_bands = get_option(options,'fixed_bands',[0,1]);
+assert(isequal(fixed_bands(:).',0:numel(fixed_bands)-1), ...
+    'fixed_bands must be a prefix 0:k-1 (e.g. [], [0] or [0,1]).');
+first_free = numel(fixed_bands);
 base = zeros(size(coefficients_true));
-for l = 0:min(1,L_max)
+for l = fixed_bands
     base(:,gd_band_indices(l)) = coefficients_true(:,gd_band_indices(l));
 end
-parameterization = gd_make_parameterization(L_max,support);
+parameterization = gd_make_parameterization(L_max,support,first_free);
 second_moment = get_option(options,'second_moment', ...
     gd_second_moment_gram(coefficients_true,support,L_max));
 
@@ -67,10 +76,15 @@ problem.moment_source = moment_source;
 problem.second_moment = second_moment;
 problem.regularizer_options = get_option(options,'regularizer_options',struct());
 problem.success_threshold = get_option(options,'success_threshold',1e-5);
-problem.fixed_bands = [0,1];
-problem.optimized_bands = 2:L_max;
-problem.disclaimer = ['A_0 and A_1 are fixed to their true values; ', ...
-    'this is not fully end-to-end recovery.'];
+problem.fixed_bands = fixed_bands;
+problem.optimized_bands = first_free:L_max;
+if isempty(fixed_bands)
+    problem.disclaimer = ['No bands are pinned; the solution is determined ', ...
+        'only up to rotation and reflection.'];
+else
+    problem.disclaimer = sprintf(['Bands %s are fixed to their true values; ', ...
+        'this is not fully end-to-end recovery.'],mat2str(fixed_bands));
+end
 end
 
 function value = get_option(options,name,default)

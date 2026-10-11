@@ -21,6 +21,18 @@ function summary = run_single_restart(seed,L_max,volume,crop,snr,sample_count,ma
 %   per call at N = 1e5, which is why SNR defaults to Inf: for a figure, the
 %   exact moment removes the sampling floor and the wait.
 %
+%   THE REPORTED FIGURE. The side-by-side rendering in the paper is
+%       run_single_restart(1,13,'vol_80S_true.mrc',1,2,200000,5000,12)
+%   which reached loss 1.0418e-06 against a floor of 1.4542e-06, overall error
+%   2.366e-02, gradient norm 1.1e-09, in 2804 of 5000 iterations and 342
+%   minutes. Two settings differ from RUN_NOISE_SWEEP_UNPINNED and both matter
+%   when reading it: degrees 0 and 1 are FIXED TO THEIR TRUE VALUES, through
+%   GD_CREATE_PROBLEM's default fixed_bands = [0,1], so this is not end-to-end
+%   recovery; and the moment is sampled and fitted in the twisted convention
+%   with GD_PRECOMPUTE_MODEL rather than GD_PHYSICAL_MODEL. The pair is
+%   matched either way -- the floor loss proves it -- but the two drivers
+%   answer slightly different questions.
+%
 %   ONE RESTART IS NOT A SUCCESS RATE. Re-rolling seeds until one looks good
 %   gives a picture of what recovery looks like WHEN IT WORKS, not how often it
 %   works. At L = 5 the cropped 80S cell had 11 of 20 restarts agreeing; the
@@ -96,6 +108,22 @@ r = experiment.restarts(1);
 
 fprintf('\n--------------- RESULT (seed %d) ---------------\n',seed);
 fprintf('  l>=2 error : %.4e\n',r.optimized_band_error);
+% The moment is invariant under rotation about z; the pinned bands normally
+% break that, but not for a molecule whose l=1 band is purely m=0. Report the
+% aligned figure too, and say whether it is the one to read.
+if isfield(r,'axial_gauge_free')
+    if r.axial_gauge_free
+        fprintf('  l>=2 aligned : %.4e  at alpha = %.1f deg  <- READ THIS\n', ...
+            r.optimized_band_error_aligned,r.axial_alpha*180/pi);
+        fprintf('     (axial rotation is an unbroken gauge here: the pinned\n');
+        fprintf('      bands are m=0 only, so any point on the circle is correct)\n');
+    else
+        fprintf('  l>=2 aligned : %.4e  at alpha = %.1f deg  (informational:\n', ...
+            r.optimized_band_error_aligned,r.axial_alpha*180/pi);
+        fprintf('      the pinned bands DO break the rotation, so the raw\n');
+        fprintf('      error above is the honest one)\n');
+    end
+end
 fprintf('  loss       : %.4e   (floor %.4e)\n',r.objective,floor_loss);
 fprintf('  ||g||      : %.3e | iterations %d/%d | exitflag %d\n', ...
     r.gradient_norm,r.iterations,max_iterations,r.exitflag);
